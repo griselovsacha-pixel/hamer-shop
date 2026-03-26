@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ info.name }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --accent: #ff8c00; --bg: #050505; --card: rgba(255, 255, 255, 0.03); }
+        body { background: var(--bg); color: white; font-family: 'Inter', sans-serif; margin: 0; overflow-x: hidden; }
+
+        /* HEADER & GLASS EFFECT */
+        header { background: rgba(0,0,0,0.8); backdrop-filter: blur(15px); padding: 10px 5%; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 1000; }
+        .nav-btn { background: none; border: 1px solid #333; color: white; padding: 8px 15px; border-radius: 20px; cursor: pointer; transition: 0.3s; margin-left: 10px; }
+        .nav-btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+        /* COMPACT GLASS BANNER */
+        .banner { height: 180px; margin: 20px; border-radius: 20px; overflow: hidden; position: relative; border: 1px solid #333; }
+        .banner img { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.6); }
+        .banner-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+
+        /* CARDS */
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; padding: 20px; }
+        .card { background: var(--card); border: 1px solid #1a1a1a; border-radius: 25px; padding: 0; transition: 0.4s; overflow: hidden; backdrop-filter: blur(5px); }
+        .card:hover { transform: translateY(-10px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(255,140,0,0.15); }
+        .card img { width: 100%; height: 230px; object-fit: cover; transition: 0.5s; }
+        .card:hover img { transform: scale(1.08); }
+
+        /* SIDE PANELS (CART & HISTORY) */
+        .panel { position: fixed; right: -400px; top: 0; width: 350px; height: 100%; background: #0a0a0a; border-left: 1px solid #222; transition: 0.5s cubic-bezier(0.7, 0, 0.3, 1); z-index: 2000; padding: 30px; box-sizing: border-box; }
+        .panel.active { right: 0; }
+        .panel-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1500; backdrop-filter: blur(5px); }
+
+        .btn-buy { background: var(--accent); border: none; padding: 12px; border-radius: 12px; width: 100%; font-weight: bold; cursor: pointer; transition: 0.3s; color: black; text-transform: uppercase; }
+        .history-card { background: #111; padding: 15px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--accent); font-size: 0.85em; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        .hot { position: absolute; top: 15px; right: 15px; background: red; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; animation: pulse 1s infinite; }
+    </style>
+</head>
+<body>
+
+<div class="panel-overlay" onclick="closePanels()"></div>
+
+<header>
+    <div style="font-weight: 900; font-size: 1.5em; letter-spacing: -1px;">HAMER <span style="color:var(--accent)">SHOP</span></div>
+    <div>
+        <button class="nav-btn" onclick="openPanel('history-panel')"><i class="fas fa-history"></i></button>
+        <button class="nav-btn" onclick="openPanel('cart-panel')"><i class="fas fa-shopping-bag"></i> <span id="cart-count">0</span></button>
+    </div>
+</header>
+
+<div class="banner">
+    <img src="{{ url_for('static', filename='banner.jpg') }}">
+    <div class="banner-text"><h1>PREMIUM COLLECTION</h1></div>
+</div>
+
+<div class="container">
+    {% for p in products %}
+    <div class="card">
+        {% if p.hot %}<div class="hot">TOP SELLER</div>{% endif %}
+        <img src="{{ url_for('static', filename=p.img) }}">
+        <div style="padding: 20px;">
+            <h3 style="margin:0;">{{ p.name }}</h3>
+            <p style="color:#666; font-size:0.9em;">{{ p.desc }}</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:15px;">
+                <span style="color:#00ff88; font-size:1.4em; font-weight:bold;">{{ p.price }} ₴</span>
+                <button class="nav-btn" onclick="addToCart('{{ p.name }}', {{ p.price }})">В кошик</button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div id="cart-panel" class="panel">
+    <h2>Мій кошик</h2>
+    <div id="cart-items" style="margin-top:20px;"></div>
+    <div style="margin-top:auto; padding-top:20px;">
+        <div style="display:flex; justify-content:space-between; font-size:1.3em; margin-bottom:20px;">
+            <span>РАЗОМ:</span><span id="total-price">0</span> ₴
+        </div>
+        <button class="btn-buy" onclick="checkout()">Оформити замовлення</button>
+    </div>
+</div>
+
+<div id="history-panel" class="panel">
+    <h2>Історія покупок</h2>
+    <div id="history-content" style="margin-top:20px; overflow-y:auto; height:80vh;"></div>
+</div>
+
+<script>
+    let cart = [];
+    let history = JSON.parse(localStorage.getItem('hamer_history')) || [];
+
+    function openPanel(id) {
+        document.getElementById(id).classList.add('active');
+        document.querySelector('.panel-overlay').style.display = 'block';
+        if(id === 'history-panel') renderHistory();
+    }
+
+    function closePanels() {
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('.panel-overlay').style.display = 'none';
+    }
+
+    function addToCart(name, price) {
+        cart.push({name, price});
+        updateCartUI();
+        openPanel('cart-panel');
+    }
+
+    function updateCartUI() {
+        document.getElementById('cart-count').innerText = cart.length;
+        document.getElementById('cart-items').innerHTML = cart.map(i => `<div style="padding:10px 0; border-bottom:1px solid #222;">${i.name} - ${i.price} ₴</div>`).join('');
+        document.getElementById('total-price').innerText = cart.reduce((s, i) => s + i.price, 0);
+    }
+
+    function renderHistory() {
+        document.getElementById('history-content').innerHTML = history.length ? 
+            history.map(h => `<div class="history-card"><b>${h.date}</b><br>${h.items}<br><span style="color:var(--accent)">Сума: ${h.total} ₴</span></div>`).reverse().join('') : 
+            'Поки що замовлень немає';
+    }
+
+    function checkout() {
+        if(!cart.length) return;
+        let total = document.getElementById('total-price').innerText;
+        let items = cart.map(i => i.name).join(', ');
+        
+        // Зберігаємо в історію
+        history.push({ date: new Date().toLocaleString(), items: items, total: total });
+        localStorage.setItem('hamer_history', JSON.stringify(history));
+
+        // Відправка в ТГ
+        window.open(`https://t.me/hamer_manager?text=Нове замовлення: ${items} на суму ${total} ₴`);
+
+        cart = [];
+        updateCartUI();
+        closePanels();
+    }
+</script>
+</body>
+</html>
